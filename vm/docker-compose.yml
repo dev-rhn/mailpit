@@ -1,0 +1,59 @@
+# Mailpit sebagai mail server penerima (MX) untuk domain dummy staging.
+# Salin .env.example -> .env, isi nilainya, lalu: docker compose up -d
+#
+# Port yang harus dibuka di firewall VM:
+#   25  -> SMTP (email masuk dari provider pengirim)
+#   80  -> HTTP (Caddy: sertifikat Let's Encrypt + redirect ke HTTPS)
+#   443 -> HTTPS (Web UI Mailpit)
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    container_name: mailpit
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    ports:
+      - "25:1025"           # SMTP publik
+    # Web UI (8025) tidak dibuka langsung, hanya lewat Caddy (HTTPS)
+    environment:
+      TZ: ${TZ:-Asia/Jakarta}
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: ${MP_MAX_MESSAGES:-5000}
+      MP_MAX_AGE: ${MP_MAX_AGE:-30d}
+      # Login Web UI & API, format "user:password"
+      MP_UI_AUTH: ${MP_UI_AUTH:?isi MP_UI_AUTH di .env}
+      # Hanya terima email untuk domain dummy, selain itu ditolak
+      MP_SMTP_ALLOWED_RECIPIENTS: ${MP_SMTP_ALLOWED_RECIPIENTS:?isi MP_SMTP_ALLOWED_RECIPIENTS di .env}
+      # Tanpa SMTP auth: server pengirim (SendGrid/SES/Gmail) tidak login ke MX
+      MP_SMTP_DISABLE_RDNS: 1
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: mailpit-caddy
+    restart: unless-stopped
+    depends_on:
+      - mailpit
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MAILPIT_UI_DOMAIN: ${MAILPIT_UI_DOMAIN:?isi MAILPIT_UI_DOMAIN di .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,4 @@
+{$MAILPIT_UI_DOMAIN} {
+	encode gzip
+	reverse_proxy mailpit:8025
+}
